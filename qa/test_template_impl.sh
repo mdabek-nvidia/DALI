@@ -98,6 +98,17 @@ disable_sanitizer() {
     unset PYTHONMALLOC
 }
 
+dali_reinstall_from_pip() {
+
+     DALI_CUDA="${DALI_CUDA_MAJOR_VERSION}0"
+
+     # The package name can be nvidia-dali,  nvidia-dali-weekly or  nvidia-dali-nightly
+     pip uninstall -y `pip list | grep nvidia-dali | cut -d " " -f1` || true
+     pip uninstall -y `pip list | grep nvidia-dali-tf-plugin | cut -d " " -f1` || true
+
+     pip install nvidia-dali-cuda${DALI_CUDA}
+     pip install nvidia-dali-tf-plugin-cuda${DALI_CUDA}
+}
 # Wrap the test_body in a subshell, where we can safely execute it with `set -e`
 # and turn it off in current shell to intercept the error code
 # when sanitizers are on, do set +e to run all the test no matter what the result is
@@ -108,6 +119,11 @@ test_body_wrapper() {(
         enable_sanitizer
     else
         set -e
+    fi
+
+    if [ -n "$DALI_INSTALL_FROM_PIP" ]; then
+        set +e
+	dali_reinstall_from_pip
     fi
 
     test_body

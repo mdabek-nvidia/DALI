@@ -47,10 +47,10 @@ export BUILD_NVML=${BUILD_NVML:-ON}
 export BUILD_FFTS=${BUILD_FFTS:-ON}
 export BUILD_CFITSIO=${BUILD_CFITSIO:-ON}
 export BUILD_CVCUDA=${BUILD_CVCUDA:-ON}
-export BUILD_CUFILE=${BUILD_CUFILE:-OFF}
-export BUILD_NVCOMP=${BUILD_NVCOMP:-OFF}
+export BUILD_CUFILE=${BUILD_CUFILE:-ON}
+export BUILD_NVCOMP=${BUILD_NVCOMP:-ON}
 export LINK_LIBCUDA=${LINK_LIBCUDA:-OFF}
-export WITH_DYNAMIC_CUDA_TOOLKIT=${WITH_DYNAMIC_CUDA_TOOLKIT:-OFF}
+export WITH_DYNAMIC_CUDA_TOOLKIT=${WITH_DYNAMIC_CUDA_TOOLKIT:-ON}
 export WITH_DYNAMIC_NVJPEG=${WITH_DYNAMIC_NVJPEG:-ON}
 export WITH_DYNAMIC_CUFFT=${WITH_DYNAMIC_CUFFT:-ON}
 export WITH_DYNAMIC_NPP=${WITH_DYNAMIC_NPP:-ON}
@@ -76,6 +76,9 @@ export BUNDLE_PATH_PREFIX=${BUNDLE_PATH_PREFIX}
 export TEST_BUNDLED_LIBS=${TEST_BUNDLED_LIBS:-YES}
 export PYTHON_VERSIONS=${PYTHON_VERSIONS}
 # use all available pythons
+
+# PYTHON_GIL can be set to 0 only if Python is compiled with --disable-gil.
+export PYTHON_GIL=$(python3 -c "import sysconfig; ret=sysconfig.get_config_var('Py_GIL_DISABLED'); print(0 if ret else 1)")
 
 cmake ../ -DCMAKE_INSTALL_PREFIX=.                 \
       -DARCH=${ARCH}                               \

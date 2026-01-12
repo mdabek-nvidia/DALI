@@ -12,17 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import nvidia.dali.experimental.dynamic as ndd
-import numpy as np
 import os
+
+import numpy as np
+import nvidia.dali.experimental.dynamic as ndd
 from test_utils import get_dali_extra_path
 
 
 def _conversion_test_op(check_arg_func):
-    class Resize2(ndd.ops.Resize):
+    class Resize2(ndd._ops.Resize):
         def _run(self, ctx, *inputs, **args):
             check_arg_func(args)
-            return ndd.ops.Resize._run(self, ctx, *inputs, **args)
+            return ndd._ops.Resize._run(self, ctx, *inputs, **args)
 
     resize2_func = ndd._op_builder.build_fn_wrapper(Resize2)
     return resize2_func
@@ -51,7 +52,7 @@ def test_arg_conversion():
     def check_not_converted(args):
         nonlocal test_calls
         test_calls += 1
-        assert args["size"] is size, "size should be passed as-is"
+        assert args["size"]._storage is size._storage, "size should be passed as-is"
 
     _conversion_test_op(check_not_converted)(img, size=size).evaluate()
     assert test_calls == 3, "Argument check function not called"
@@ -81,7 +82,7 @@ def test_arg_conversion_batch():
     def check_not_converted(args):
         nonlocal test_calls
         test_calls += 1
-        assert args["size"] is size, "size should be passed as-is"
+        assert args["size"]._storage is size._storage, "size should be passed as-is"
 
     _conversion_test_op(check_not_converted)(imgs, size=size).evaluate()
     assert test_calls == 3, "Argument check function not called"

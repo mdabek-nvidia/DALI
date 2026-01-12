@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright (c) 2017-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -483,7 +483,7 @@ void CopyToExternalImplGPU(SourceObject &src,
   }
 
   void *ptr = ctypes_void_ptr(dst_ptr);
-  CopyToExternal<mm::memory_kind::device>(ptr, src, copy_order, use_copy_kernel);
+  CopyToExternal<mm::memory_kind::device>(ptr, std::nullopt, src, copy_order, use_copy_kernel);
 
   wait_order.wait(copy_order);
 }
@@ -845,7 +845,8 @@ void ExposeTensor(py::module &m) {
       py::return_value_policy::take_ownership)
     .def("copy_to_external",
         [](Tensor<CPUBackend> &t, py::object p) {
-          CopyToExternal<mm::memory_kind::host>(ctypes_void_ptr(p), t, AccessOrder::host(), false);
+          CopyToExternal<mm::memory_kind::host>(
+              ctypes_void_ptr(p), std::nullopt, t, AccessOrder::host(), false);
         },
       "ptr"_a,
       R"code(
@@ -1465,7 +1466,8 @@ void ExposeTensorListCPU(py::module &m) {
       )code")
     .def("copy_to_external",
         [](TensorList<CPUBackend> &tl, py::object p) {
-          CopyToExternal<mm::memory_kind::host>(ctypes_void_ptr(p), tl, AccessOrder::host(), false);
+          CopyToExternal<mm::memory_kind::host>(
+              ctypes_void_ptr(p), std::nullopt, tl, AccessOrder::host(), false);
         },
       R"code(
       Copy the contents of this `TensorList` to an external pointer
@@ -1607,8 +1609,8 @@ void ExposeTesorListGPU(py::module &m) {
       R"code(
       List of tensors residing in the GPU memory.
       )code")
-    .def_static("broadcast", [](const Tensor<CPUBackend> &t, int num_samples) {
-        return std::make_shared<TensorList<CPUBackend>>(t, num_samples);
+    .def_static("broadcast", [](const Tensor<GPUBackend> &t, int num_samples) {
+        return std::make_shared<TensorList<GPUBackend>>(t, num_samples);
       })
     .def("as_cpu", [](TensorList<GPUBackend> &t) {
           DeviceGuard g(t.device_id());
@@ -1913,6 +1915,7 @@ py::dict ArgumentDeprecationInfoToDict(const ArgumentDeprecation & meta) {
   d["msg"] = meta.msg;
   d["removed"] = meta.removed;
   d["renamed_to"] = meta.renamed_to;
+  d["deprecated_in_version"] = meta.version;
   return d;
 }
 
@@ -2532,7 +2535,7 @@ auto GetSupportedBackends(OpSchema &schema) {
   return ret;
 }
 
-PYBIND11_MODULE(backend_impl, m) {
+PYBIND11_MODULE(backend_impl, m, py::mod_gil_not_used()) {
   dali::InitOperatorsLib();
   m.doc() = "Python bindings for the C++ portions of DALI";
 
@@ -2927,6 +2930,7 @@ PYBIND11_MODULE(backend_impl, m) {
     .def("IsDocPartiallyHidden", &OpSchema::IsDocPartiallyHidden)
     .def("IsNoPrune", &OpSchema::IsNoPrune)
     .def("IsDeprecated", &OpSchema::IsDeprecated)
+    .def("DeprecatedInVersion", &OpSchema::DeprecatedInVersion)
     .def("DeprecatedInFavorOf", &OpSchema::DeprecatedInFavorOf)
     .def("DeprecationMessage", &OpSchema::DeprecationMessage)
     .def("IsDeprecatedArg", &OpSchema::IsDeprecatedArg)

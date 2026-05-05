@@ -175,6 +175,27 @@ class _ValidateSizeDescriptor(_ArgumentValidateRule):
         _ValidateIfPositive.verify(values=size, name="size")
 
 
+class _ValidateZeroOneRangeProbability(_ArgumentValidateRule):
+    """
+    Verify if the given probability is in [0.0; 1.0] range and is:
+    - an integer
+    - or a float
+
+    Parameters
+    ----------
+    size : any
+        Value to verify. Should be an integer, float or a sequence of length 1 or 2.
+    """
+
+    @classmethod
+    def verify(cls, *, p, **_) -> None:
+        if isinstance(p, (int, float)):
+            if float(p) < 0.0 or float(p) > 1.0:
+                raise ValueError("p should be a floating point value in the interval [0.0, 1.0].")
+        else:
+            raise ValueError("p should be a floating point value in the interval [0.0, 1.0].")
+
+
 class Operator(ABC):
     """
     Abstract base class for operator specification

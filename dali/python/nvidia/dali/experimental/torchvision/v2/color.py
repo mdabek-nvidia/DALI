@@ -20,6 +20,7 @@ from .operator import (
     Operator,
     _ValidateIfRange,
     _ValidateIfNonNegative,
+    _ValidateZeroOneRangeProbability,
     get_HWC_from_layout_pipeline,
 )
 
@@ -283,5 +284,42 @@ class Grayscale(Operator):
             output = fn.cat(output, output, output, axis_name="C")
         else:
             output = fn.hsv(output, saturation=0, device=self.device)
+
+        return output
+
+
+class RandomGrayscale(Operator):
+    """
+    Randomly convert image or videos to grayscale with a probability of p (default 0.1)
+
+    Parameters
+    ----------
+    p : float
+        probability that image or video should be converted to grayscale.
+    """
+
+    arg_rules = [_ValidateZeroOneRangeProbability]
+    preprocess_data = get_HWC_from_layout_pipeline
+
+    def __init__(self, p: float = 0.1, device: Literal["cpu", "gpu"] = "cpu"):
+        super().__init__(device=device, p=p)
+        # Torchvision does not validate p!
+        self.p = p
+        self.grayscale = Grayscale(num_output_channels=3, device=device)
+
+    def _kernel(self, data_input):
+        """
+        Randomly converts data_input to a grayscale
+        """
+
+        # Torchvsion returns grayscale image with the same number of channels as the original
+        _, _, c, data_input = data_input
+        self.grayscale.num_output_channels = c
+
+        convert = fn.random.coin_flip(probability=self.p)
+        if convert == 1.0:
+            output = self.grayscale(data_input)
+        else:
+            output = data_input
 
         return output

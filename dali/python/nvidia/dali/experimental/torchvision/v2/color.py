@@ -20,7 +20,7 @@ from .operator import (
     Operator,
     _ValidateIfRange,
     _ValidateIfNonNegative,
-    _ValidateZeroOneRangeProbability,
+    _ValidateIfZeroOneRange,
     get_HWC_from_layout_pipeline,
 )
 
@@ -298,7 +298,7 @@ class RandomGrayscale(Operator):
         probability that image or video should be converted to grayscale.
     """
 
-    arg_rules = [_ValidateZeroOneRangeProbability]
+    arg_rules = [_ValidateIfZeroOneRange]
     preprocess_data = get_HWC_from_layout_pipeline
 
     def __init__(self, p: float = 0.1, device: Literal["cpu", "gpu"] = "cpu"):
@@ -312,14 +312,13 @@ class RandomGrayscale(Operator):
         Randomly converts data_input to a grayscale
         """
 
-        # Torchvsion returns grayscale image with the same number of channels as the original
-        _, _, c, data_input = data_input
+        # Torchvision returns grayscale image with the same number of channels as the original
+        _, _, c, output = data_input
         self.grayscale.num_output_channels = c
 
-        convert = fn.random.coin_flip(probability=self.p)
-        if convert == 1.0:
-            output = self.grayscale(data_input)
-        else:
-            output = data_input
+        convert = fn.random.coin_flip(dtype=dali.types.DALIDataType.BOOL, probability=self.p)
+
+        if convert:
+            output = self.grayscale(output)
 
         return output

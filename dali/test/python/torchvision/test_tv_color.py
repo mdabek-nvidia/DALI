@@ -71,8 +71,9 @@ def test_grayscale(output_channels, device):
     loop_images_test(t, td, num_output_channels=output_channels)
 
 
-def test_randomgrayscale():
-    td = Compose([RandomGrayscale(p=1.0)])
+@params("cpu", "gpu")
+def test_randomgrayscale(device):
+    td = Compose([RandomGrayscale(p=1.0, device=device)])
     t = transforms.RandomGrayscale(p=1.0)
 
     for fn in test_files:
@@ -81,7 +82,7 @@ def test_randomgrayscale():
         out_dali_tv = transforms.functional.pil_to_tensor(td(img))
         assert verify_non_one_off(out_tv, out_dali_tv), f"Images differ {fn}"
 
-    td = Compose([RandomGrayscale(p=0)])
+    td = Compose([RandomGrayscale(p=0, device=device)])
     t = transforms.RandomGrayscale(p=0)
 
     for fn in test_files:
@@ -89,6 +90,12 @@ def test_randomgrayscale():
         out_tv = transforms.functional.pil_to_tensor(t(img))
         out_dali_tv = transforms.functional.pil_to_tensor(td(img))
         assert verify_non_one_off(out_tv, out_dali_tv), f"Images differ {fn}"
+
+
+@params(-0.1, 2.0, [0.0, 0.8])
+def test_invalid_randomgrayscale_probability(p):
+    with assert_raises(ValueError):
+        Compose([RandomGrayscale(p=p)])
 
 
 @params(2, 4)

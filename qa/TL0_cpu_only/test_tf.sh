@@ -9,6 +9,9 @@ test_body() {
   # skip TF tests for sanitizers as it leads to stack-overflow
   if [ -z "$DALI_ENABLE_SANITIZERS" ]; then
     # CPU only test, remove CUDA from the search path just in case
+    # Sanitizer-only ASAN/RPATH workaround isn't needed here — this branch is
+    # only entered with sanitizers OFF, so libdali_operators.so's RUNPATH
+    # ($ORIGIN/../nvimgcodec) suffices to find the wheel-installed nvimgcodec.
     export LD_LIBRARY_PATH=""
     export PATH=${PATH/cuda/}
     ${python_new_invoke_test} test_dali_tf_plugin_cpu_only

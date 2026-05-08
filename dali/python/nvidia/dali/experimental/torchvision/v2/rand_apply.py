@@ -43,7 +43,7 @@ class RandomApply(Operator):
     ):
         super().__init__(device=device, p=p)
         self.p = p
-        self.op_list = op_list
+        self._op_list = op_list
 
     def _kernel(self, data_input):
         """
@@ -52,7 +52,7 @@ class RandomApply(Operator):
         output = data_input
         convert = fn.random.coin_flip(dtype=dali.types.DALIDataType.BOOL, probability=self.p)
         if convert:
-            for op in self.op_list:
+            for op in self._op_list:
                 output = op(output)
 
         return output

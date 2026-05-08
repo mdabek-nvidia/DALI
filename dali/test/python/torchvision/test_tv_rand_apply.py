@@ -84,7 +84,7 @@ def test_random_apply_p0(device):
 
 @params(-0.1, 2.0, [0.0, 0.8])
 def test_invalid_random_apply_probability(p):
-    with assert_raises(ValueError):
+    with assert_raises(ValueError, regex="p should be a floating point value in the interval"):
         RandomApply([Grayscale(num_output_channels=3)], p=p)
 
 
@@ -122,10 +122,15 @@ def test_random_apply_multi_ops(device):
         assert verify_non_one_off(out_tv, out_dali), f"Images differ: {fn}"
 
 
-def test_random_apply_preserves_shape():
+@params("cpu", "gpu")
+def test_random_apply_preserves_shape(device):
     """Output shape must match input shape regardless of p."""
-    td_apply = Compose([RandomApply([RandomHorizontalFlip(p=1.0)], p=1.0)])
-    td_skip = Compose([RandomApply([RandomHorizontalFlip(p=1.0)], p=0.0)])
+    td_apply = Compose(
+        [RandomApply([RandomHorizontalFlip(p=1.0, device=device)], p=1.0, device=device)]
+    )
+    td_skip = Compose(
+        [RandomApply([RandomHorizontalFlip(p=1.0, device=device)], p=0.0, device=device)]
+    )
 
     for fn in test_files:
         img = Image.open(fn)

@@ -175,6 +175,29 @@ class _ValidateSizeDescriptor(_ArgumentValidateRule):
         _ValidateIfPositive.verify(values=size, name="size")
 
 
+class _ValidateIfZeroOneRange(_ArgumentValidateRule):
+    """
+    Verify if the given value is in [0.0; 1.0] range and is an integer or a float
+
+    Parameters
+    ----------
+    p : any
+        Value to validate. Should be an integer or a float in the range of [0.0, 1.0].
+    """
+
+    @classmethod
+    def verify(cls, *, p, **_) -> None:
+        if isinstance(p, (int, float)):
+            if float(p) < 0.0 or float(p) > 1.0:
+                raise ValueError(
+                    f"p should be a floating point value in the interval [0.0, 1.0]. Got: {p}"
+                )
+        else:
+            raise ValueError(
+                f"p should be a floating point value in the interval [0.0, 1.0]. Got: {p!r}"
+            )
+
+
 class Operator(ABC):
     """
     Abstract base class for operator specification

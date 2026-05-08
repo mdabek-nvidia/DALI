@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-import logging
 from typing import List, Sequence, Callable, Union
 
 import nvidia.dali.fn as fn
@@ -76,9 +75,7 @@ def _pipeline_function(op_list: Sequence, layout: str = "HWC", input_device: str
         layout : str
             Layout of the data.
     """
-    input_node = fn.external_source(
-        name="input_data", no_copy=True, layout=layout, device=input_device
-    )
+    input_node = fn.external_source(name="input_data", layout=layout, device=input_device)
     for op in op_list:
         input_node = op(input_node)
     return input_node
@@ -154,19 +151,9 @@ class PipelineWithLayout(ABC):
         )
         self._internal_run = self._cuda_run if torch.cuda.is_available() else self._cpu_run
 
-    def _align_data_with_device(self, data_input):
-        if self.torch_device_type != data_input.device.type:
-            logging.warning(
-                f"Pipeline device is {self.device}, but data is on {data_input.device.type}."
-                " Copying!"
-            )
-            return data_input.cpu() if self.torch_device_type == "cpu" else data_input.cuda()
-
-        return data_input
-
     def run(self, data_input):
 
-        output = self._internal_run(self._align_data_with_device(data_input))
+        output = self._internal_run(data_input)
 
         if output is None:
             return output

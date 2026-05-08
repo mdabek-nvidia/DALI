@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from .v2.centercrop import CenterCrop
-from .v2.color import ColorJitter, Grayscale
+from .v2.color import ColorJitter, Grayscale, RandomGrayscale
 from .v2.compose import Compose
 from .v2.flips import RandomHorizontalFlip, RandomVerticalFlip
 from .v2.gaussian_blur import GaussianBlur
@@ -31,6 +31,7 @@ __all__ = [
     "Normalize",
     "Pad",
     "PILToTensor",
+    "RandomGrayscale",
     "RandomHorizontalFlip",
     "RandomVerticalFlip",
     "Resize",

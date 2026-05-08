@@ -20,7 +20,7 @@ from PIL import Image
 import torch
 import torchvision.transforms.v2 as transforms
 
-from nvidia.dali.experimental.torchvision import Compose, Grayscale, ColorJitter
+from nvidia.dali.experimental.torchvision import Compose, Grayscale, ColorJitter, RandomGrayscale
 from nvidia.dali.experimental.torchvision.v2.functional import to_grayscale, rgb_to_grayscale
 
 
@@ -69,6 +69,33 @@ def test_grayscale(output_channels, device):
     t = transforms.Compose([transforms.Grayscale(num_output_channels=output_channels)])
 
     loop_images_test(t, td, num_output_channels=output_channels)
+
+
+@params("cpu", "gpu")
+def test_randomgrayscale(device):
+    td = Compose([RandomGrayscale(p=1.0, device=device)])
+    t = transforms.RandomGrayscale(p=1.0)
+
+    for fn in test_files:
+        img = Image.open(fn)
+        out_tv = transforms.functional.pil_to_tensor(t(img))
+        out_dali_tv = transforms.functional.pil_to_tensor(td(img))
+        assert verify_non_one_off(out_tv, out_dali_tv), f"Images differ {fn}"
+
+    td = Compose([RandomGrayscale(p=0, device=device)])
+    t = transforms.RandomGrayscale(p=0)
+
+    for fn in test_files:
+        img = Image.open(fn)
+        out_tv = transforms.functional.pil_to_tensor(t(img))
+        out_dali_tv = transforms.functional.pil_to_tensor(td(img))
+        assert verify_non_one_off(out_tv, out_dali_tv), f"Images differ {fn}"
+
+
+@params(-0.1, 2.0, [0.0, 0.8])
+def test_invalid_randomgrayscale_probability(p):
+    with assert_raises(ValueError):
+        Compose([RandomGrayscale(p=p)])
 
 
 @params(2, 4)

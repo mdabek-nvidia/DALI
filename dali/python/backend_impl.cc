@@ -14,6 +14,7 @@
 
 #include <cuda_runtime_api.h>
 #include <dlfcn.h>
+#include <opencv2/core/version.hpp>
 #include <algorithm>
 #include <sstream>
 #include <cstring>
@@ -2843,6 +2844,18 @@ PYBIND11_MODULE(backend_impl, m, py::mod_gil_not_used()) {
       ret = GetNvimgcodecVersion();
     } catch (const std::runtime_error &) {}
     return ret;
+  });
+
+  m.def("GetOpenCVVersion", [] {
+    // Returns the OpenCV version string ("4.13.0") DALI was built against
+    // via the CV_VERSION macro from <opencv2/core/version.hpp>. Build-time
+    // and runtime libopencv share the same SONAME, so this matches the
+    // major.minor of the actually-loaded library — sufficient for triage
+    // gates like the 4.13.x IPP HAL warpPerspective regression. We avoid
+    // cv::getVersionString() because it lives in libopencv_core, which
+    // dali_python doesn't link directly, and Python extensions hide the
+    // unresolved symbol until import time.
+    return std::string(CV_VERSION);
   });
 
 #if SHM_WRAPPER_ENABLED

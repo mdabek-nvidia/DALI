@@ -14,6 +14,8 @@
 
 from typing import TypedDict
 
+import base64
+
 import nvidia.dali as dali
 import nvidia.dali.backend_impl as _b
 import math
@@ -598,6 +600,39 @@ class Operator:
 _READER_SHARD_DEFAULTS = {"shard_id": 0, "num_shards": 1, "stick_to_shard": False}
 
 
+class ReaderState:
+    """Serialized checkpoint state of a :class:`Reader`.
+
+    Wraps the serialized representation produced by the underlying operator's
+    :func:`SerializeCheckpoint`. It can be converted to a string with :func:`str`,
+    saved to disk, and later passed to :meth:`Reader.set_state` to restore the
+    reader to the captured iteration position.
+
+    The object also keeps a reference to the originating operator so that future
+    extensions can re-serialize the live state on demand.
+    """
+
+    def __init__(self, op: "Reader", serialized: str):
+        self._op = op
+        self._serialized = serialized
+
+    def __str__(self) -> str:
+        return self._serialized
+
+    def __repr__(self) -> str:
+        return f"ReaderState({self._serialized!r})"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, ReaderState):
+            return self._serialized == other._serialized
+        if isinstance(other, str):
+            return self._serialized == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self._serialized)
+
+
 class Reader(Operator):
     """Base class for reader operators. Extends Operator with iteration support via next_epoch().
 
@@ -612,6 +647,7 @@ class Reader(Operator):
         shard_id=_READER_SHARD_DEFAULTS["shard_id"],
         num_shards=_READER_SHARD_DEFAULTS["num_shards"],
         stick_to_shard=_READER_SHARD_DEFAULTS["stick_to_shard"],
+        enable_checkpointing=False,
         **kwargs,
     ):
         if name is None:
@@ -620,6 +656,7 @@ class Reader(Operator):
         self._batch_size = batch_size
         self._compiled_iter = None
         self._compile_mode: bool | None = None
+        self._checkpointing_enabled = enable_checkpointing
         device = _device.device(device)
         # _backend is forwarded via **kwargs, we don't need to touch it here
         self._shard_id = shard_id if shard_id is not None else _READER_SHARD_DEFAULTS["shard_id"]
@@ -638,6 +675,8 @@ class Reader(Operator):
         self._previous_batch_size: int | None = None
         # Used to make sure that args passed to the constructor are not repeated in __call__
         self._tensor_arg_names: set[str] = set()
+        # If set, the checkpoint state to apply once the backend is constructed.
+        self._pending_state = None
 
         if self._num_shards < 1:
             raise ValueError(
@@ -651,11 +690,140 @@ class Reader(Operator):
         kwargs["shard_id"] = self._shard_id
         kwargs["num_shards"] = self._num_shards
         kwargs["stick_to_shard"] = self._stick_to_shard
+        kwargs["checkpointing"] = self._checkpointing_enabled
         super().__init__(self._actual_batch_size, name, device, **kwargs)
+
+    def _enable_checkpointing(self):
+        if self._checkpointing_enabled:
+            return
+        if self._compile_mode is True:
+            raise NotImplementedError("Checkpointing is currently not supported in compiled mode.")
+
+        if self._op_backend:
+            raise RuntimeError(
+                f"The operator '{self._schema_name}' was initialized with checkpointing disabled. "
+                f"Pass `enable_checkpointing=True` to the reader's constructor."
+            )
+        self._init_args["checkpointing"] = self._checkpointing_enabled = True
 
     @classmethod
     def _get(cls, *_, **__):
         raise RuntimeError("Readers cannot be cached. Construct a new instance instead.")
+
+    def _init_spec_no_lock(self, inputs, args):
+        if self._op_spec is not None:
+            return
+        super()._init_spec_no_lock(inputs, args)
+
+    def _init_backend(self, ctx, inputs, args):
+        was_initialized = self._op_backend is not None
+        super()._init_backend(ctx, inputs, args)
+        if not was_initialized and self._pending_state is not None:
+            self._op_backend.RestoreCheckpoint(self._pending_state)
+            self._pending_state = None
+
+    def get_state(self, *, cuda_stream=None) -> "ReaderState":
+        """Returns the current checkpoint state of this reader.
+
+        The returned state object captures the iteration position of the underlying
+        loader. It can be passed back to :meth:`set_state` to resume processing
+        from this point. The state is serialized to a string by ``str(state)``.
+
+        .. warning::
+            The methods ``get_state`` and ``set_state`` are not inherently thread-safe
+            with respect to running the reader. External synchronization is necessary.
+
+        .. note::
+            If there are any pending asynchronous or deferred calls to this operator,
+            the function will wait for them to finish before getting the state.
+
+        Parameters
+        ----------
+        cuda_stream
+            The CUDA stream on which the readers is running or None.
+
+        Returns
+        -------
+        :class:`ReaderState`
+            An opaque state object that wraps a serialized checkpoint string.
+
+        Raises
+        ------
+        RuntimeError
+            If the reader has not started any epoch yet (the backend has not been
+            initialized) or if the underlying reader does not support checkpointing.
+        """
+        if self._op_backend is None:
+            raise RuntimeError(
+                "Cannot get the reader's state before its first iteration. "
+                "Call `next_epoch` once before calling `get_state`."
+            )
+        if not self._checkpointing_enabled:
+            raise RuntimeError(
+                f"The reader '{self._schema_name}' was initialized with checkpointing disabled. "
+                f"Pass `enable_checkpointing=True` to the reader's constructor."
+            )
+
+        # Make sure that all pending invocations are done before we save the state
+        if self._last_invocation is not None:
+            self._last_invocation.run()
+
+        # SaveCheckpoint returns a `bytes` blob (binary protobuf payload).
+        # Wrap it as a base64 ASCII string so it round-trips through JSON / `str`.
+        raw = self._op_backend.SaveCheckpoint(cuda_stream)
+        serialized = base64.b64encode(raw).decode("ascii")
+        return ReaderState(self, serialized)
+
+    def set_state(self, state) -> None:
+        """Restores the reader's iteration position from a saved state.
+
+        Parameters
+        ----------
+        state : :class:`ReaderState` or str
+            Either a state object obtained from :meth:`get_state`, or its
+            string representation (as produced by ``str(state)``).
+
+        .. warning::
+            The methods ``get_state`` and ``set_state`` are not inherently thread-safe
+            with respect to running the reader. External synchronization is necessary.
+
+        .. note::
+            If there are any pending asynchronous or deferred calls to this operator,
+            the function will wait for them to finish before setting the state.
+
+        If the reader's backend has not yet been initialized (i.e. no epoch has
+        been started), the state is buffered and applied automatically the first
+        time the backend is created.
+        """
+        if isinstance(state, ReaderState):
+            serialized = state._serialized
+        elif isinstance(state, str):
+            serialized = state
+        elif isinstance(state, bytes):
+            serialized = state.decode("ascii")
+        else:
+            raise TypeError(
+                "state must be a ReaderState, str or bytes, " f"got {type(state).__name__}."
+            )
+        # The C++ reader can only restore a snapshot before its prefetch thread
+        # has started - i.e. before the first iteration. Reject late calls clearly
+        # rather than letting the underlying assertion fire.
+        if self._op_backend is not None:
+            raise RuntimeError(
+                "Cannot set the reader's state after iteration has begun. "
+                "Call `set_state` on a freshly constructed reader, before any "
+                "call to `next_epoch`, `samples`, `batches` or `__call__`."
+            )
+        raw = base64.b64decode(serialized)
+        self._enable_checkpointing()
+        if self._op_backend is not None:
+            # if there was a previous invocation in flight, make sure it's finished before we
+            # try load the state
+            if self._last_invocation is not None:
+                self._last_invocation.run()
+            self._op_backend.RestoreCheckpoint(raw)
+        else:
+            self._pending_state = raw
 
     def _shard_epoch_size(self):
         meta = self._op_backend.GetReaderMeta()
@@ -732,6 +900,10 @@ class Reader(Operator):
             batch_size = self._batch_size
 
         if compile:
+            if self._checkpointing_enabled:
+                raise NotImplementedError(
+                    "Checkpointing is currently not supported in compiled mode."
+                )
             if self._compile_mode is False:
                 raise RuntimeError(
                     "This reader was previously used without compile=True "

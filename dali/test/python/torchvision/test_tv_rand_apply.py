@@ -155,15 +155,15 @@ def test_random_apply_p_sanity(p, device):
 def test_random_apply_p(p, device):
     """Sanity test to verify if p value varies application."""
     td = Compose(
-        [RandomApply([Grayscale(num_output_channels=3, device=device)], p=p, device=device)]
+        [RandomApply([Grayscale(num_output_channels=1, device=device)], p=p, device=device)]
     )
     reps = 10
     for fn in test_files:
         img = Image.open(fn)
-        tensor_img = transforms.functional.pil_to_tensor(img)
         proc = 0
         for i in range(reps):
             out_dali = transforms.functional.pil_to_tensor(td(img))
-            if not verify_non_one_off(out_dali, tensor_img):
+            # If grayscale was applied it will result in a single channel image
+            if out_dali.shape[0] == 1:
                 proc += 1
         assert proc > 0, f"RandomApply did not apply any operation in {reps} runs"

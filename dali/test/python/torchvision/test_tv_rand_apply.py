@@ -14,7 +14,7 @@
 
 import os
 
-from nose2.tools import params
+from nose2.tools import params, cartesian_params
 from nose_utils import assert_raises
 from PIL import Image
 import torch
@@ -138,3 +138,32 @@ def test_random_apply_preserves_shape(device):
         out_skip = td_skip(img)
         assert out_apply.size == img.size, f"Shape mismatch after apply: {fn}"
         assert out_skip.size == img.size, f"Shape mismatch after skip: {fn}"
+
+
+@cartesian_params((0.01, 0.1, 0.25, 0.3, 0.8, 0.99), ("cpu", "gpu"))
+def test_random_apply_p_sanity(p, device):
+    """Sanity test to verify if 0 < p < 1."""
+    td = Compose(
+        [RandomApply([Grayscale(num_output_channels=3, device=device)], p=p, device=device)]
+    )
+    for fn in test_files:
+        img = Image.open(fn)
+        _ = td(img)
+
+
+@cartesian_params((0.3, 0.5, 0.8), ("cpu", "gpu"))
+def test_random_apply_p(p, device):
+    """Sanity test to verify if p value varies application."""
+    td = Compose(
+        [RandomApply([Grayscale(num_output_channels=3, device=device)], p=p, device=device)]
+    )
+    reps = 10
+    for fn in test_files:
+        img = Image.open(fn)
+        tensor_img = transforms.functional.pil_to_tensor(img)
+        proc = 0
+        for i in range(reps):
+            out_dali = transforms.functional.pil_to_tensor(td(img))
+            if not verify_non_one_off(out_dali, tensor_img):
+                proc += 1
+        assert proc > 0, f"RandomApply did not apply any operation in {reps} runs"
